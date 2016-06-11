@@ -1,0 +1,197 @@
+---
+title: "City Pairs - International Traffic"
+author: "AndrewJ"
+date: "4 June 2016"
+output: pdf_document
+---
+
+# Description
+
+Visualisation experimentation on some random data sets. In this case, it's an [international traffic data](https://data.gov.au/dataset/international-airlines-traffic-by-city-pairs) from data.gov.au, dated 2016-06-02.
+
+# Setup
+
+```{r echo=FALSE, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(zoo)
+library(ggplot2)
+library(ggthemes)
+library(treemap)
+library(formattable)
+library(circlize)
+```
+
+# Import
+
+```{r}
+read_traffic <- function () {
+  read_csv("city-pairs-2016-06-02.csv")
+}
+```
+
+# Transform
+
+```{r}
+transform_traffic <- function (df) {
+  df %>% 
+  mutate(
+    Month = as.Date(Month, origin="1899-12-30"),
+    AustralianPort = as.factor(AustralianPort),
+    ForeignPort = as.factor(ForeignPort),
+    Country = as.factor(Country),
+    Passengers_In = comma(Passengers_In, digits = 0),
+    Passengers_Out = comma(Passengers_Out, digits = 0),
+    Passengers_Total = comma(Passengers_Total, digits = 0))
+}
+```
+
+# Analyse
+
+See the total inbound and outbound traffic by month
+```{r}
+monthly_traffic <- . %>%
+  group_by(Month) %>%
+  summarise(
+    People_In = sum(Passengers_In), 
+    People_Out = sum(Passengers_Out)) %>%
+  mutate(
+    Roll_Avg_In = rollmean(People_In, k = 12, fill = "extend", align = "center"),
+    Roll_Avg_Out = rollmean(People_Out, k = 12, fill = "extend", align = "center"))
+```
+
+Get stats on source and destination airport pairs
+```{r}
+by_airport_pairs <- . %>%
+  group_by(AustralianPort, ForeignPort) %>%
+  summarise(Passengers_Total = sum(Passengers_Total)) %>%
+  ungroup() %>%
+  unite(Journey, AustralianPort, ForeignPort, sep = " — ", remove = TRUE)
+```
+
+Summarise passengers by country
+```{r}
+by_country <- . %>%
+  group_by(Country) %>%
+  summarise(Passengers_Total = sum(Passengers_Total)) %>%
+  arrange(desc(Passengers_Total))
+```
+
+
+# Visualise
+
+## Monthly traffic
+
+```{r}
+plot_monthly_traffic <- function (df) {
+  df %>%
+  monthly_traffic() %>%
+  gather(key = Direction, value = Passengers,
+    People_In, People_Out) %>%
+  ggplot(aes(x = Month, y = Passengers, fill = Direction)) +
+    geom_bar(stat = 'identity', position = "stack") +
+    labs(title = "Monthly Passengers", x = "Month", y = "Passengers") +
+    theme_fivethirtyeight()
+  }
+  
+plot_moving_average_traffic <- function (df) {
+  df %>%
+  monthly_traffic() %>%
+  gather(
+    key = Direction, value = Passengers, 
+    Roll_Avg_In, Roll_Avg_Out) %>%
+  ggplot(aes(x=Month, y=Passengers, colour=Direction)) +
+    geom_line(stat = 'identity', position = "stack") +
+    labs(title = "Moving Average Passengers (k=12)", x = "Month", y = "Passengers") +
+    theme_fivethirtyeight()
+} 
+```
+
+## Plot top countries
+
+```{r}
+plot_top_countries <- function (df, n = 10) {
+  df %>%
+  by_country() %>%
+  head(n) %>%
+  ggplot(aes(x = reorder(Country, Passengers_Total), y = Passengers_Total)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label = Passengers_Total), hjust = 1.0, size = 2.5, colour = "white") +
+    coord_flip() +
+    labs(title = "Top Countries") +
+    theme_fivethirtyeight()
+}
+```
+
+## Treemap version
+
+```{r}
+plot_country_treemap <- function(df, n=25)
+  df %>%
+  by_country() %>% 
+  head(n) %>% 
+  treemap(index=c("Country"), vSize=c("Passengers_Total"), title = "Journeys by country")
+```
+
+## Plot top n journeys
+
+```{r}
+plot_top_journeys <- function (df, n = 10) {
+  df %>%
+  by_airport_pairs() %>%
+  arrange(desc(Passengers_Total)) %>%
+  head(n) %>%
+  ggplot(aes(x = reorder(Journey, Passengers_Total), y = Passengers_Total)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label = Passengers_Total), hjust = 1.1, colour = "white") +
+    coord_flip() +
+    labs(title = "Top Passenger Journeys", x = "Journey", y = "Passengers") +
+    theme_fivethirtyeight()
+}
+```
+
+# Run
+
+## Import the data.
+
+```{r}
+traffic <- read_traffic() %>% transform_traffic()
+str(traffic)
+levels(traffic$AustralianPort)
+levels(traffic$ForeignPort)
+```
+
+## Do some plotting
+
+Time series
+```{r}
+traffic %>% plot_moving_average_traffic()
+```
+
+Histograms
+```{r}
+traffic %>% plot_top_countries(n = 12)
+traffic %>% plot_top_journeys(n = 15)
+```
+
+Treemap of destinations
+```{r}
+traffic %>% plot_country_treemap()
+```
+
+Chord diagram for top journeys
+```{r}
+airport_pairs <- traffic %>%
+  group_by(AustralianPort, ForeignPort) %>%
+  summarise(Passengers = sum(Passengers_Total)) %>%
+  ungroup() %>%
+  arrange(desc(Passengers)) %>%
+  head(20) %>%
+  chordDiagram(airport_pairs)
+circos.clear()
+```
+
+
+The End
