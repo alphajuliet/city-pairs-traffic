@@ -2,7 +2,7 @@
 title: "City Pairs - Domestic Traffic"
 author: "AndrewJ"
 date: "4 June 2016"
-output: pdf_document
+output: html_document
 ---
 
 # Description
@@ -11,7 +11,7 @@ Visualisation experimentation on some random data sets. In this case, it's an [m
 
 # Setup
 
-```{r echo=FALSE, include=FALSE}
+```{r, message=FALSE}
 library(dplyr)
 library(tidyr)
 library(readr)
@@ -24,29 +24,28 @@ library(formattable)
 library(circlize)
 ```
 
-# Import
+# Import and preparation
 
-```{r}
+```{r, echo = FALSE}
 read_traffic <- function () {
-  read_csv("DOMCityPairsWeb.csv")
+  read_csv("data/DOMCityPairsWeb.csv")
 }
 ```
-
-# Transform
 
 ```{r}
 transform_traffic <- function (df) {
   df %>% 
   mutate(
-    Month = as.Date(Month, origin="1899-12-30"),
+    Month = as.Date(Month, origin="1899-12-30"), # Convert from Excel format
     City1 = as.factor(City1),
     City2 = as.factor(City2))
 }
 ```
 
-# Analyse
+# Analysis Functions
 
-See the total traffic by month
+Aggregate traffic by months, and augment with moving averages using `zoo::rollmean`.
+
 ```{r}
 monthly_traffic <- . %>%
   group_by(Month) %>%
@@ -58,12 +57,24 @@ monthly_traffic <- . %>%
     Seats = rollmean(Seats, k = 12, fill = "extend", align = "center"))
 ```
 
-Get stats on source and destination airport pairs
+Help get stats on source and destination airport pairs by grouping into a single field.
+
 ```{r}
 by_airport_pairs <- . %>%
   unite(Journey, City1, City2, sep = " — ", remove = TRUE) %>%
   group_by(Journey)
 ```
+
+Busiest Routes
+
+```{r}
+busiest_routes <- . %>%
+  by_airport_pairs() %>%
+  summarise(Trips = Passenger_Trips %>% mean %>% comma(digits=0)) %>%
+  arrange(desc(Trips)) %>%
+  head(n = 20)
+```
+
 
 # Run
 
@@ -75,9 +86,12 @@ str(dom)
 levels(dom$City1)
 ```
 
-## Do some plotting
+## Do some plotting with `ggplot2`.
 
-Time series moving average
+### Time series moving average
+
+Melt the data into a time series format with `gather`, and use `geom_line` to plot.
+
 ```{r}
 dom %>%
   monthly_traffic() %>%
@@ -90,23 +104,30 @@ dom %>%
     theme_fivethirtyeight()
 ```
 
-Busiest routes
+Bar chart of the busiest routes.
+
 ```{r}
 dom %>%
-  by_airport_pairs() %>%
-  summarise(Trips = Passenger_Trips %>% mean %>% comma(digits=0)) %>%
-  arrange(desc(Trips)) %>%
-  head(n = 20) %>%
+  busiest_routes %>%
   ggplot(aes(x = reorder(Journey, Trips), y = Trips)) +
-    geom_bar(stat = "identity") +
-    geom_text(aes(label = Trips), size=3, hjust = -0.1, colour = "black") +
+    geom_bar(stat = "identity", width = 0.8) +
+    geom_text(
+      aes(label = Trips), 
+      size=3, hjust = -0.1, 
+      colour = "black") +
+    scale_y_continuous(
+      limits = c(0, 500000),
+      labels = scales::comma) +
     coord_flip() +
-    labs(title = "Top Passenger Trips", x = "Journey", y = "Passengers") +
+    labs(
+      title = "Top Passenger Trips", 
+      x = "Journey", 
+      y = "Passengers") +
     theme(axis.title.y = element_blank())
-
 ```
 
-Longest journeys
+Bar chart of the longest journeys
+
 ```{r}
 dom %>%
   by_airport_pairs() %>%
@@ -118,10 +139,14 @@ dom %>%
   ggplot(aes(x = reorder(Journey, Distance), y = Distance)) +
   geom_bar(stat = "identity", aes(fill = Trips)) +
   coord_flip() +
-  labs(title = "Longest flights", y = "Distance (km)", x = "Sector")
+  labs(
+    title = "Longest flights", 
+    y = "Distance (km)", 
+    x = "Sector")
 ```
 
-Chord diagram for top journeys
+Chord diagram for top 20 journeys.
+
 ```{r}
 dom %>%
   group_by(City1, City2) %>%
@@ -133,7 +158,8 @@ dom %>%
 circos.clear()
 ```
 
-Play with some scatter plots
+Play with a scatter plot.
+
 ```{r}
 dom %>%
   by_airport_pairs %>%
@@ -143,7 +169,22 @@ dom %>%
     Load = mean(Passenger_Load_Factor),
     Distance = mean(`Distance_GC_(km)`)) %>%
   ggplot(aes(x = Passengers, y = Distance, colour = Load)) +
-  geom_point()
+  geom_point() +
+  labs(
+    title = "Passengers by Distance",
+    x = "Passengers",
+    y = "Distance (km)")
 ```
 
-The End
+## Plot with `rbokeh`.
+
+```{r}
+library(rbokeh)
+
+dom %>% 
+  busiest_routes() %>%
+  figure(data = ., width = 500, height = 400) %>%
+  ly_bar(Journey, Trips) %>%
+  theme_axis("x", major_label_orientation = 45)
+```
+
