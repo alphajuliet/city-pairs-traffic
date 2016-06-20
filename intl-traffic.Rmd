@@ -28,7 +28,7 @@ library(circlize)
 
 ```{r}
 read_traffic <- function () {
-  read_csv("city-pairs-2016-06-02.csv")
+  read_csv("data/city-pairs-2016-06-02.csv")
 }
 ```
 
@@ -61,6 +61,14 @@ monthly_traffic <- . %>%
     Roll_Avg_In = rollmean(People_In, k = 12, fill = "extend", align = "center"),
     Roll_Avg_Out = rollmean(People_Out, k = 12, fill = "extend", align = "center"))
 ```
+
+Total passenger traffic
+```{r}
+total_passenger_traffic <- . %>%
+  group_by(Month) %>%
+  summarise(Passengers = sum(Passengers_In + Passengers_Out))
+```
+
 
 Get stats on source and destination airport pairs
 ```{r}
@@ -191,6 +199,36 @@ airport_pairs <- traffic %>%
   head(20) %>%
   chordDiagram(airport_pairs)
 circos.clear()
+```
+
+
+# Time Series Analysis
+
+```{r}
+create_ts <- . %>%
+  total_passenger_traffic %>% select(Passengers) %>%
+  ts(frequency = 12, start = c(1985, 1))
+```
+
+Decompose into components
+```{r}
+traffic_ts <- traffic %>% create_ts()
+plot(traffic_ts)
+f <- decompose(traffic_ts)
+plot(f)
+```
+
+Do prediction using ARIMA
+```{r}
+ts_mod <- arima(traffic_ts, 
+                order = c(1, 0, 0), 
+                seasonal = list(order = c(2, 1, 0), period = 12))
+ts_mod_p <- predict(ts_mod, n.ahead = 48)
+ts_mod_p$upper <- ts_mod_p$pred + 2 * ts_mod_p$se
+ts_mod_p$lower <- ts_mod_p$pred - 2 * ts_mod_p$se
+ts.plot(traffic_ts, ts_mod_p$pred, ts_mod_p$upper, ts_mod_p$lower,
+        col = c(1, 2, 4, 4), 
+        lty = c(1, 1, 3, 3))
 ```
 
 
