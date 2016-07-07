@@ -12,6 +12,8 @@ Visualisation experimentation on some random data sets. In this case, it's an [m
 # Setup
 
 ```{r, message=FALSE}
+rm(list=ls())
+
 library(dplyr)
 library(tidyr)
 library(readr)
@@ -70,7 +72,8 @@ Busiest Routes
 ```{r}
 busiest_routes <- . %>%
   by_airport_pairs() %>%
-  summarise(Trips = Passenger_Trips %>% mean %>% comma(digits=0)) %>%
+  filter(Year == 2015) %>%
+  summarise(Trips = Passenger_Trips %>% mean %>% floor) %>%
   arrange(desc(Trips)) %>%
   head(n = 20)
 ```
@@ -100,11 +103,15 @@ dom %>%
     Trips, Seats) %>%
   ggplot(aes(x=Month, y=Trips, colour=Type)) +
     geom_line(stat = 'identity', position = "stack") +
-    labs(title = "Passenger Trips and Seats (k=12)", x = "Month", y = "Number") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      title = "Passenger Trips and Seats", 
+      x = "Month", 
+      y = "Number") +
     theme_fivethirtyeight()
 ```
 
-Bar chart of the busiest routes.
+Bar chart of the busiest routes last year
 
 ```{r}
 dom %>%
@@ -116,11 +123,11 @@ dom %>%
       size=3, hjust = -0.1, 
       colour = "black") +
     scale_y_continuous(
-      limits = c(0, 500000),
+      limits = c(0, 800000),
       labels = scales::comma) +
     coord_flip() +
     labs(
-      title = "Top Passenger Trips", 
+      title = "Top Passenger Trips in 2015", 
       x = "Journey", 
       y = "Passengers") +
     theme(axis.title.y = element_blank())
@@ -186,5 +193,24 @@ dom %>%
   figure(data = ., width = 500, height = 400) %>%
   ly_bar(Journey, Trips) %>%
   theme_axis("x", major_label_orientation = 45)
+```
+
+## Plot with `plot.ly`
+
+```{r}
+library(plotly)
+
+dom %>%
+  busiest_routes %>%
+  plot_ly(
+    type = 'bar', 
+    x = rev(Trips),
+    y = rev(reorder(Journey, Trips)),
+    orientation = "h") %>%
+  layout(
+    title = "Top Passenger Trips in 2015",
+    margin = list(l = 200),
+    xaxis = list(title = "Number of trips", dtick = 50e3),
+    yaxis = list(title = ""))
 ```
 
