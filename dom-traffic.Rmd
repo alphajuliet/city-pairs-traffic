@@ -1,19 +1,14 @@
 ---
-title: "City Pairs - Domestic Traffic"
-author: "AndrewJ"
-date: "4 June 2016"
-output: html_document
+title: "R Notebook"
+output: html_notebook
 ---
 
-# Description
-
-Visualisation experimentation on some random data sets. In this case, it's an [monthly airport domestic traffic data](https://data.gov.au/dataset/domestic-airlines-top-routes-and-totals) via data.gov.au, dated 2016-05.
-
-# Setup
-
-```{r, message=FALSE}
+```{r}
 rm(list=ls())
+```
 
+
+```{r}
 library(dplyr)
 library(tidyr)
 library(readr)
@@ -21,20 +16,18 @@ library(lubridate)
 library(zoo)
 library(ggplot2)
 library(ggthemes)
-library(treemap)
+library(gridExtra)
+library(ggrepel)
+library(RColorBrewer)
 library(formattable)
 library(circlize)
 ```
 
-# Import and preparation
-
-```{r, echo = FALSE}
-read_traffic <- function () {
-  read_csv("data/DOMCityPairsWeb.csv")
-}
-```
-
 ```{r}
+read_traffic <- function () {
+  read_csv("./domcitypairsweb-2017-10-04.csv")
+}
+
 transform_traffic <- function (df) {
   df %>% 
   mutate(
@@ -44,22 +37,22 @@ transform_traffic <- function (df) {
 }
 ```
 
-# Analysis Functions
+## Analysis Functions
 
-Aggregate traffic by months, and augment with moving averages using `zoo::rollmean`.
+Aggregate traffic by months, and augment with moving averages using zoo::rollmean.
 
 ```{r}
 monthly_traffic <- . %>%
+  select(Month, Trips = Passenger_Trips, Seats, RPKs, ASKs) %>%
   group_by(Month) %>%
-  summarise(
-    Trips = sum(Passenger_Trips),
-    Seats = sum(Seats)) %>%
-  mutate(
-    Trips = rollmean(Trips, k = 12, fill = "extend", align = "center"),
-    Seats = rollmean(Seats, k = 12, fill = "extend", align = "center"))
+  summarise_all(funs(. %>% as.numeric %>% sum)) %>%
+  # rename_all(funs(str_replace(., "_\\w+", ""))) %>%
+  mutate_at(
+    vars(Trips, Seats, RPKs, ASKs), 
+    funs(rollmean(., k = 12, fill = "extend", align = "center")))
 ```
 
-Help get stats on source and destination airport pairs by grouping into a single field.
+Group into a route name
 
 ```{r}
 by_airport_pairs <- . %>%
@@ -67,150 +60,180 @@ by_airport_pairs <- . %>%
   group_by(Journey)
 ```
 
-Busiest Routes
+Pull out the busiest routes by passenger trips in a given year
 
 ```{r}
-busiest_routes <- . %>%
-  by_airport_pairs() %>%
-  filter(Year == 2015) %>%
-  summarise(Trips = Passenger_Trips %>% mean %>% floor) %>%
-  arrange(desc(Trips)) %>%
-  head(n = 20)
+busiest_routes <- function (df, n = 20, year = 2016) { 
+  df %>%
+    filter(Year == year) %>%
+    group_by(City1, City2) %>%
+    summarise(
+      Trips = Passenger_Trips %>% mean %>% floor) %>%
+    arrange(desc(Trips)) %>%
+    head(n = n)
+}
 ```
-
 
 # Run
 
-## Import the data.
-
 ```{r}
 dom <- read_traffic() %>% transform_traffic()
-str(dom)
-levels(dom$City1)
+glimpse(dom)
 ```
 
-## Do some plotting with `ggplot2`.
+# Analysis
 
-### Time series moving average
+Linear regression
 
-Melt the data into a time series format with `gather`, and use `geom_line` to plot.
+```{r}
+lm_model <- lm(Passenger_Trips ~ Month, data = dom)
+summary(lm_model)
+```
+
+
+# Visualisations
+
+## Moving average and Loess fit
 
 ```{r}
 dom %>%
   monthly_traffic() %>%
-  gather(
-    key = Type, value = Trips, 
-    Trips, Seats) %>%
-  ggplot(aes(x=Month, y=Trips, colour=Type)) +
-    geom_line(stat = 'identity', position = "stack") +
-    scale_y_continuous(labels = scales::comma) +
-    labs(
-      title = "Passenger Trips and Seats", 
-      x = "Month", 
-      y = "Number") +
-    theme_fivethirtyeight()
+  ggplot(aes(x=Month, y = Trips)) +
+  geom_line(
+    colour = "red") +
+  stat_smooth(
+    method = "loess", colour = "#999999", size = 0.2) +
+  scale_x_date(
+    date_breaks = "4 years", 
+    date_minor_breaks = "1 year", 
+    date_labels = "%Y") +
+  scale_y_continuous(
+    limits = c(0, 5e6), 
+    labels = scales::comma) +
+  labs(
+    title = "Passenger Trips", 
+    x = "Date", 
+    y = NULL) +
+  theme_minimal()
 ```
 
-Bar chart of the busiest routes last year
+## Busiest Routes
 
 ```{r}
 dom %>%
-  busiest_routes %>%
+  busiest_routes(year = 2016, n = 20) %>%
+  by_airport_pairs %>%
   ggplot(aes(x = reorder(Journey, Trips), y = Trips)) +
-    geom_bar(stat = "identity", width = 0.8) +
-    geom_text(
-      aes(label = Trips), 
-      size=3, hjust = -0.1, 
-      colour = "black") +
-    scale_y_continuous(
-      limits = c(0, 800000),
-      labels = scales::comma) +
-    coord_flip() +
-    labs(
-      title = "Top Passenger Trips in 2015", 
-      x = "Journey", 
-      y = "Passengers") +
-    theme(axis.title.y = element_blank())
+  geom_bar(
+    stat = "identity", 
+    width = 0.5, 
+    fill = "#990033") +
+  geom_text(
+    aes(label = Trips), 
+    size=2.5, hjust = -0.1, 
+    colour = "#333333") +
+  scale_y_continuous(
+    limits = c(0, 800000),
+    labels = scales::comma) +
+  coord_flip() +
+  labs(
+    title = "Busiest routes in 2016", 
+    x = "Journey", 
+    y = "Passengers") +
+  theme_minimal() +
+  theme(axis.title.y = element_blank())
 ```
 
-Bar chart of the longest journeys
+## Longest flights
 
 ```{r}
 dom %>%
+  filter(Year == 2016) %>%
   by_airport_pairs() %>%
   summarise(
     Distance = mean(`Distance_GC_(km)`),
     Trips = mean(Passenger_Trips)) %>%
   arrange(desc(Distance)) %>%
-  head(n = 20) %>%
-  ggplot(aes(x = reorder(Journey, Distance), y = Distance)) +
-  geom_bar(stat = "identity", aes(fill = Trips)) +
-  coord_flip() +
+  head(n = 10) %>%
+  ggplot(aes(x = Distance, y = Trips)) +
+  geom_point(size = 3.0, color = "#990033") +
+  geom_text_repel(
+    aes(label = Journey), size=2.5, 
+    colour = "#333333") +
+  scale_x_continuous(breaks = seq(0, 5000, 500), limits = c(0, 5000)) +
+  scale_y_continuous(breaks = seq(0, 200000, 20000), limits = c(0, 200000)) +
   labs(
-    title = "Longest flights", 
-    y = "Distance (km)", 
-    x = "Sector")
+    title = "Ten longest flights",
+    subtitle = "Plotted against 2016 passenger trips",
+    y = "Number of trips", 
+    x = "Distance (km)") +
+  theme_minimal()
 ```
 
-Chord diagram for top 20 journeys.
+## Chord diagram
+
+Top n routes by passenger trips
 
 ```{r}
+circos.par()
 dom %>%
-  group_by(City1, City2) %>%
-  summarise(Trips = sum(Passenger_Trips)) %>%
-  ungroup() %>%
-  arrange(desc(Trips)) %>%
-  head(20) %>%
-  chordDiagram()
+  busiest_routes(year = 2016, n = 20) %>%
+  chordDiagram(
+    annotationTrack = "grid",
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(.))))),
+    link.border = "#666666")
+
+circos.track(
+  track.index = 1, 
+  panel.fun = function(x, y) {
+    circos.text(
+      CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index, 
+      facing = "clockwise", 
+      niceFacing = TRUE, 
+      adj = c(0, 0.5), 
+      cex = 0.5)
+  }, bg.border = NA) # here set bg.border to NA is important
+
 circos.clear()
 ```
 
-Play with a scatter plot.
+# Revenue by route
 
 ```{r}
-dom %>%
+rpk <- dom %>%
   by_airport_pairs %>%
+  group_by(Journey) %>%
   summarise(
-    Passengers = sum(Passenger_Trips), 
-    Flights = sum(Aircraft_Trips),
-    Load = mean(Passenger_Load_Factor),
+    mean_RPK = mean(RPKs)/1e6, 
     Distance = mean(`Distance_GC_(km)`)) %>%
-  ggplot(aes(x = Passengers, y = Distance, colour = Load)) +
-  geom_point() +
+  arrange(desc(mean_RPK)) %>%
+  head(n = 15)
+
+rpk %>%
+  ggplot(aes(x = reorder(Journey, mean_RPK), y = mean_RPK)) +
+  geom_col(width = 0.5, fill = "#6666ff") +
+  scale_y_continuous(breaks = seq(0, 400, 50), limits = c(0, 400)) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Revenue by route",
+       x = NULL,
+       y = "Revenue ($M)")
+```
+
+## Plot revenue against distance
+
+```{r}
+rpk %>%
+  ggplot(aes(x = Distance, y = mean_RPK)) +
+  geom_point(colour = "#990033", size = 3) +
+  geom_text_repel(aes(label = Journey), size = 2.5) +
+  scale_x_continuous(breaks = seq(0, 4000, 500), limits = c(0, 4000)) +
+  scale_y_continuous(breaks = seq(0, 400, 50), limits = c(0, 400)) +
   labs(
-    title = "Passengers by Distance",
-    x = "Passengers",
-    y = "Distance (km)")
-```
+    title = "Revenue vs Distance",
+    x = "Distance (km)",
+    y = "Revenue ($M)") +
+  theme_minimal()
 
-## Plot with `rbokeh`.
-
-```{r}
-library(rbokeh)
-
-dom %>% 
-  busiest_routes() %>%
-  figure(data = ., width = 500, height = 400) %>%
-  ly_bar(Journey, Trips) %>%
-  theme_axis("x", major_label_orientation = 45)
-```
-
-## Plot with `plot.ly`
-
-```{r}
-library(plotly)
-
-dom %>%
-  busiest_routes %>%
-  plot_ly(
-    type = 'bar', 
-    x = rev(Trips),
-    y = rev(reorder(Journey, Trips)),
-    orientation = "h") %>%
-  layout(
-    title = "Top Passenger Trips in 2015",
-    margin = list(l = 200),
-    xaxis = list(title = "Number of trips", dtick = 50e3),
-    yaxis = list(title = ""))
 ```
 
