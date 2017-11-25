@@ -234,6 +234,68 @@ rpk %>%
     x = "Distance (km)",
     y = "Revenue ($M)") +
   theme_minimal()
+```
 
+# Map
+
+```{r}
+library(ggmap)
+library(memoise)
+library(stringr)
+```
+
+## Get coordinates for all the cities
+
+
+```{r, message = FALSE}
+# Memoise the external API call.
+geocode_f <- memoise(geocode)
+
+get_coords <- function (df) {
+  cities <- union(unique(dom$City1), unique(dom$City2)) %>% data_frame(City = .)
+  
+  cities %>%
+    do(geocode_f(str_c(.$City, ", AUSTRALIA"))) %>%
+    bind_cols(cities) %>%
+    select(City, lon, lat)
+}
+coords <- get_coords(dom)
+```
+
+Add coordinates to the main data frame.
+
+```{r}
+dom_coords <- dom %>%
+  left_join(coords, by = c("City1" = "City")) %>%
+  left_join(coords, by = c("City2" = "City")) %>%
+  rename(lon1 = lon.x, lat1 = lat.x, lon2 = lon.y, lat2 = lat.y)
+```
+
+## Plot busiest routes on the map
+
+```{r}
+basemap <- get_map(
+  location = "Australia", 
+  source = "google",
+  zoom = 4, scale = 2,
+  maptype = "terrain", 
+  color = "bw")
+```
+
+```{r}
+busiest <- dom_coords %>%
+    filter(Year == 2016) %>%
+    group_by(City1, City2, lon1, lat1, lon2, lat2) %>%
+    summarise(
+      Trips = floor(mean(Passenger_Trips))) %>%
+    arrange(desc(Trips)) %>%
+    head(n = 20) %>%
+  by_airport_pairs
+
+ggmap(basemap, base_layer = ggplot(busiest)) +
+  geom_segment(
+    aes(x = lon1, y = lat1, 
+        xend = lon2, yend = lat2, size = Trips), 
+    colour = "#990033", lineend = "round", show.legend = FALSE)
 ```
 
