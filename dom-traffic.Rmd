@@ -25,7 +25,7 @@ library(circlize)
 
 ```{r}
 read_traffic <- function () {
-  read_csv("./domcitypairsweb-2017-10-04.csv")
+  read_csv("data/domcitypairsweb-2017-10-04.csv")
 }
 
 transform_traffic <- function (df) {
