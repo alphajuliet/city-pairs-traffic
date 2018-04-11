@@ -23,7 +23,7 @@ library(circlize)
 
 ```{r}
 read_traffic <- function () {
-  read_csv("data/audomcitypairs-20171004.csv")
+  read_csv("data/audomcitypairs-20180406.csv")
 }
 
 transform_traffic <- function (df) {
@@ -61,7 +61,7 @@ by_airport_pairs <- . %>%
 Pull out the busiest routes by passenger trips in a given year
 
 ```{r}
-busiest_routes <- function (df, n = 20, year = 2016) { 
+busiest_routes <- function (df, n = 20, year = 2017) { 
   df %>%
     filter(Year == year) %>%
     group_by(City1, City2) %>%
@@ -118,8 +118,9 @@ dom %>%
 ## Busiest Routes
 
 ```{r}
+year = 2017
 dom %>%
-  busiest_routes(year = 2016, n = 20) %>%
+  busiest_routes(year = year, n = 20) %>%
   by_airport_pairs %>%
   ggplot(aes(x = reorder(Journey, Trips), y = Trips)) +
   geom_bar(
@@ -135,7 +136,7 @@ dom %>%
     labels = scales::comma) +
   coord_flip() +
   labs(
-    title = "Busiest routes in 2016", 
+    title = paste("Busiest routes in", year), 
     x = "Journey", 
     y = "Passengers") +
   theme_minimal() +
@@ -146,7 +147,7 @@ dom %>%
 
 ```{r}
 dom %>%
-  filter(Year == 2016) %>%
+  filter(Year == year) %>%
   by_airport_pairs() %>%
   summarise(
     Distance = mean(`Distance_GC_(km)`),
@@ -167,7 +168,7 @@ dom %>%
     labels = scales::comma) +
   labs(
     title = "Ten longest flights",
-    subtitle = "Plotted against 2016 passenger trips",
+    subtitle = paste("Plotted against", year, "passenger trips"),
     y = "Number of trips", 
     x = "Distance (km)") +
   theme_minimal()
@@ -180,7 +181,7 @@ Top n routes by passenger trips
 ```{r}
 circos.par()
 dom %>%
-  busiest_routes(year = 2016, n = 20) %>%
+  busiest_routes(year = year, n = 20) %>%
   chordDiagram(
     annotationTrack = "grid",
     preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(.))))),
@@ -210,7 +211,7 @@ rpk <- dom %>%
     mean_RPK = mean(RPKs)/1e6, 
     Distance = mean(`Distance_GC_(km)`)) %>%
   arrange(desc(mean_RPK)) %>%
-  head(n = 15)
+  head(n = 20)
 
 rpk %>%
   ggplot(aes(x = reorder(Journey, mean_RPK), y = mean_RPK)) +
