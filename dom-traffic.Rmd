@@ -9,12 +9,9 @@ rm(list=ls())
 
 
 ```{r results='hide'}
-library(dplyr)
-library(readr)
-library(tidyr)
+library(tidyverse)
 library(lubridate)
 library(zoo)
-library(ggplot2)
 library(ggthemes)
 library(gridExtra)
 library(ggrepel)
@@ -25,7 +22,7 @@ library(circlize)
 
 ```{r}
 read_traffic <- function () {
-  read_csv("data/audomcitypairs-201805.csv")
+  read_csv("data/audomcitypairs-201909.csv")
 }
 
 transform_traffic <- function (df) {
@@ -47,7 +44,7 @@ Aggregate traffic by months, and augment with moving averages using zoo::rollmea
 monthly_traffic <- . %>%
   select(Month, Trips = Passenger_Trips, Seats, RPKs, ASKs) %>%
   group_by(Month) %>%
-  summarise_all(funs(. %>% as.numeric %>% sum)) %>%
+  summarise_all(list(. %>% as.numeric %>% sum)) %>%
   # rename_all(funs(str_replace(., "_\\w+", ""))) %>%
   mutate_at(
     vars(Trips, Seats, RPKs, ASKs), 
@@ -152,6 +149,33 @@ dom %>%
   theme_minimal() +
   theme(axis.title.y = element_blank())
 ```
+
+Out of Sydney...
+```{r}
+dom %>%
+  filter(str_detect(City1, "SYDNEY") | str_detect(City2, "SYDNEY")) %>%
+  busiest_routes(n = 15, start_date = start_date, end_date = end_date) %>%
+  ggplot(aes(x = reorder(Journey, Trips), y = Trips)) +
+  geom_bar(
+    stat = "identity", 
+    width = 0.5, 
+    fill = "#990033") +
+  geom_text(
+    aes(label = prettyNum(Trips, big.mark = ",")), 
+    size=2.5, hjust = -0.1, 
+    colour = "#993333") +
+  scale_y_continuous(
+    limits = c(0, 800000),
+    labels = scales::comma) +
+  coord_flip() +
+  labs(
+    title = paste("Busiest routes into/out of Sydney"),
+    subtitle = paste("Over period", start_date, "to", end_date), 
+    y = "Total passenger trips") +
+  theme_minimal() +
+  theme(axis.title.y = element_blank())
+```
+
 
 ## Longest flights
 
