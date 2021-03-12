@@ -9,6 +9,7 @@ rm(list=ls())
 
 
 ```{r results='hide'}
+library(magrittr)
 library(tidyverse)
 library(lubridate)
 library(zoo)
@@ -22,7 +23,7 @@ library(circlize)
 
 ```{r}
 read_traffic <- function () {
-  read_csv("data/audomcitypairs-202009.csv")
+  read_csv("data/audomcitypairs-202102.csv")
 }
 
 transform_traffic <- function (df) {
@@ -139,7 +140,7 @@ dom %>%
     size=2.5, hjust = -0.1, 
     colour = "#993333") +
   scale_y_continuous(
-    limits = c(0, 800000),
+    limits = c(0, 300000),
     labels = scales::comma) +
   coord_flip() +
   labs(
@@ -165,7 +166,7 @@ dom %>%
     size=2.5, hjust = -0.1, 
     colour = "#993333") +
   scale_y_continuous(
-    limits = c(0, 800000),
+    limits = c(0, 300000),
     labels = scales::comma) +
   coord_flip() +
   labs(
@@ -256,7 +257,7 @@ rpk %>%
     colour = "#333333") +
   scale_y_continuous(
     breaks = seq(0, 600, 50), 
-    limits = c(0, 600)) +
+    limits = c(0, 300)) +
   coord_flip() +
   theme_minimal() +
   labs(
@@ -274,7 +275,7 @@ rpk %>%
   geom_point(colour = "#990033", size = 3) +
   geom_text_repel(aes(label = Journey), size = 2.5) +
   scale_x_continuous(breaks = seq(0, 4000, 500), limits = c(0, 4000)) +
-  scale_y_continuous(breaks = seq(0, 660, 50), limits = c(0, 600)) +
+  scale_y_continuous(breaks = seq(0, 660, 50), limits = c(0, 200)) +
   labs(
     title = "Revenue vs Distance",
     x = "Distance (km)",
